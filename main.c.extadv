@@ -12,14 +12,6 @@
 #include <zephyr/bluetooth/gatt.h>
 
 
-
-#define BT_UUID_CUSTOM_SERVICE_VAL   BT_UUID_128_ENCODE(0x12345678, 0x1234, 0x1234, 0x1234, 0x123456789abc)
-#define BT_UUID_CUSTOM_CHAR_VAL      BT_UUID_128_ENCODE(0xabcdef01, 0x2345, 0x3456, 0x4567, 0x56789abcdef0)
-
-static struct bt_uuid_128 custom_service_uuid = BT_UUID_INIT_128(BT_UUID_CUSTOM_SERVICE_VAL);
-static struct bt_uuid_128 custom_char_uuid    = BT_UUID_INIT_128(BT_UUID_CUSTOM_CHAR_VAL);
-
-
 LOG_MODULE_REGISTER(app_main, LOG_LEVEL_INF);
 
 static struct bt_le_ext_adv *adv_conn;
@@ -33,9 +25,6 @@ static const struct bt_data ad[] = {
 	BT_DATA_BYTES(BT_DATA_UUID16_ALL, BT_UUID_16_ENCODE(BT_UUID_RANGING_SERVICE_VAL)),
 	BT_DATA(BT_DATA_NAME_COMPLETE, CONFIG_BT_DEVICE_NAME, sizeof(CONFIG_BT_DEVICE_NAME) - 1),
 };
-
-static  char hello_msg[32] = "HelloBLE";
-
 
 static void connected_cb(struct bt_conn *conn, uint8_t err)
 {
@@ -126,23 +115,6 @@ BT_CONN_CB_DEFINE(conn_cb) = {
 	.le_cs_security_enable_complete = security_enable_cb,
 	.le_cs_procedure_enable_complete = procedure_enable_cb,
 };
-static ssize_t read_hello_msg(struct bt_conn *conn, const struct bt_gatt_attr *attr,
-			      void *buf, uint16_t len, uint16_t offset)
-{
-	const char *value = attr->user_data;
-	return bt_gatt_attr_read(conn, attr, buf, len, offset, value, strlen(value));
-}
-
-BT_GATT_SERVICE_DEFINE(custom_svc,
-	BT_GATT_PRIMARY_SERVICE(&custom_service_uuid),
-	BT_GATT_CHARACTERISTIC(&custom_char_uuid.uuid,
-                       BT_GATT_CHRC_READ | BT_GATT_CHRC_NOTIFY,
-                       BT_GATT_PERM_READ,
-                       read_hello_msg,
-                       NULL,
-                       hello_msg),
-	BT_GATT_CCC(NULL, BT_GATT_PERM_READ | BT_GATT_PERM_WRITE),
-);
 
 int main(void)
 {
@@ -237,18 +209,6 @@ int main(void)
 		err = bt_le_cs_set_default_settings(connection, &default_settings);
 		if (err) {
 			LOG_ERR("Failed to configure default CS settings (err %d)", err);
-		}
-		 while (connection) {
-			snprintf(hello_msg, sizeof(hello_msg), "HelloBLE %d", k_uptime_get_32() / 1000);
-
-			err = bt_gatt_notify(NULL, &custom_svc.attrs[1], hello_msg, strlen(hello_msg));
-			if (err) {
-				LOG_WRN("Notify failed (err %d)", err);
-			} else {
-				LOG_INF("🔔 Sent: %s", hello_msg);
-			}
-
-			k_sleep(K_SECONDS(2));
 		}
 	}
 
