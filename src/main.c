@@ -6,15 +6,20 @@
 #include <zephyr/bluetooth/uuid.h>
 #include <zephyr/bluetooth/cs.h>
 #include <bluetooth/services/ras.h>
-
 #include <zephyr/logging/log.h>
 #include <zephyr/bluetooth/hci.h>
 #include <zephyr/bluetooth/gatt.h>
+#include <zephyr/drivers/sensor.h>
+
 
 
 
 #define BT_UUID_CUSTOM_SERVICE_VAL   BT_UUID_128_ENCODE(0x12345678, 0x1234, 0x1234, 0x1234, 0x123456789abc)
 #define BT_UUID_CUSTOM_CHAR_VAL      BT_UUID_128_ENCODE(0xabcdef01, 0x2345, 0x3456, 0x4567, 0x56789abcdef0)
+#define I2C_NODE              DT_ALIAS(i2c2)
+#define BME280_NODE DT_INST(0, bosch_bme280)
+#define DEVICE_ID      1
+
 
 static struct bt_uuid_128 custom_service_uuid = BT_UUID_INIT_128(BT_UUID_CUSTOM_SERVICE_VAL);
 static struct bt_uuid_128 custom_char_uuid    = BT_UUID_INIT_128(BT_UUID_CUSTOM_CHAR_VAL);
@@ -35,6 +40,7 @@ static const struct bt_data ad[] = {
 };
 
 static  char hello_msg[32] = "HelloBLE";
+static const struct device *bme280_dev;
 
 
 static void connected_cb(struct bt_conn *conn, uint8_t err)
@@ -155,6 +161,13 @@ int main(void)
 		LOG_ERR("Bluetooth init failed (err %d)", err);
 		return 0;
 	}
+	bme280_dev = DEVICE_DT_GET(BME280_NODE);
+	if (!device_is_ready(bme280_dev)) {
+		LOG_ERR("❌ BME280 sensor not ready");
+		return 0;
+	}
+	LOG_INF("✅ BME280 sensor initialized");
+
 
 	// err = bt_le_adv_start(BT_LE_ADV_CONN_FAST_2, ad, ARRAY_SIZE(ad), NULL, 0);
 	// if (err) {
@@ -239,7 +252,26 @@ int main(void)
 			LOG_ERR("Failed to configure default CS settings (err %d)", err);
 		}
 		 while (connection) {
-			snprintf(hello_msg, sizeof(hello_msg), "HelloBLE %d", k_uptime_get_32() / 1000);
+			struct sensor_value temp_val, press_val, hum_val;
+
+			if (sensor_sample_fetch(bme280_dev) == 0 &&
+				sensor_channel_get(bme280_dev, SENSOR_CHAN_AMBIENT_TEMP, &temp_val) == 0 &&
+				sensor_channel_get(bme280_dev, SENSOR_CHAN_PRESS, &press_val) == 0 &&
+				sensor_channel_get(bme280_dev, SENSOR_CHAN_HUMIDITY, &hum_val) == 0) {
+
+				float temp = sensor_value_to_double(&temp_val);
+				float press = sensor_value_to_double(&press_val);
+				float hum = sensor_value_to_double(&hum_val);
+
+				snprintf(hello_msg, sizeof(hello_msg), "D%dTM%dPR%dHM%d",
+					DEVICE_ID,
+					(int)(temp * 10),
+					(int)(press * 10),
+					(int)(hum * 10));
+			} else {
+				snprintf(hello_msg, sizeof(hello_msg), "TMERR");
+				LOG_WRN("⚠️ Failed to read BME280 data");
+			}
 
 			err = bt_gatt_notify(NULL, &custom_svc.attrs[1], hello_msg, strlen(hello_msg));
 			if (err) {
