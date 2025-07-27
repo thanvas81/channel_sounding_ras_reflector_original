@@ -1,3 +1,13 @@
+/*
+ * Copyright (c) 2024 Nordic Semiconductor ASA
+ *
+ * SPDX-License-Identifier: LicenseRef-Nordic-5-Clause
+ */
+
+/** @file
+ *  @brief Channel Sounding Reflector with Ranging Responder sample
+ */
+
 #include <zephyr/types.h>
 #include <zephyr/kernel.h>
 #include <zephyr/bluetooth/bluetooth.h>
@@ -7,8 +17,12 @@
 #include <zephyr/bluetooth/cs.h>
 #include <bluetooth/services/ras.h>
 
+#include <dk_buttons_and_leds.h>
+
 #include <zephyr/logging/log.h>
 LOG_MODULE_REGISTER(app_main, LOG_LEVEL_INF);
+
+#define CON_STATUS_LED DK_LED1
 
 static K_SEM_DEFINE(sem_connected, 0, 1);
 
@@ -33,7 +47,10 @@ static void connected_cb(struct bt_conn *conn, uint8_t err)
 	}
 
 	connection = bt_conn_ref(conn);
+
 	k_sem_give(&sem_connected);
+
+	dk_set_led_on(CON_STATUS_LED);
 }
 
 static void disconnected_cb(struct bt_conn *conn, uint8_t reason)
@@ -42,6 +59,8 @@ static void disconnected_cb(struct bt_conn *conn, uint8_t reason)
 
 	bt_conn_unref(conn);
 	connection = NULL;
+
+	dk_set_led_off(CON_STATUS_LED);
 
 	sys_reboot(SYS_REBOOT_COLD);
 }
@@ -115,6 +134,8 @@ int main(void)
 	int err;
 
 	LOG_INF("Starting Channel Sounding Reflector Sample");
+
+	dk_leds_init();
 
 	err = bt_enable(NULL);
 	if (err) {
