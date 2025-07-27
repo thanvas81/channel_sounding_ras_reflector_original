@@ -8,8 +8,14 @@
 #include <bluetooth/services/ras.h>
 
 #include <zephyr/logging/log.h>
+#include <zephyr/bluetooth/hci.h>
+#include <zephyr/bluetooth/gatt.h>
+
+
 LOG_MODULE_REGISTER(app_main, LOG_LEVEL_INF);
 
+static struct bt_le_ext_adv *adv_conn;
+static struct bt_le_ext_adv *adv_data;
 static K_SEM_DEFINE(sem_connected, 0, 1);
 
 static struct bt_conn *connection;
@@ -122,11 +128,73 @@ int main(void)
 		return 0;
 	}
 
-	err = bt_le_adv_start(BT_LE_ADV_CONN_FAST_2, ad, ARRAY_SIZE(ad), NULL, 0);
-	if (err) {
-		LOG_ERR("Advertising failed to start (err %d)", err);
-		return 0;
-	}
+	// err = bt_le_adv_start(BT_LE_ADV_CONN_FAST_2, ad, ARRAY_SIZE(ad), NULL, 0);
+	// if (err) {
+	// 	LOG_ERR("Advertising failed to start (err %d)", err);
+	// 	return 0;
+	// }
+    struct bt_le_adv_param adv_conn_param = BT_LE_ADV_PARAM_INIT(
+        BT_LE_ADV_OPT_CONNECTABLE,
+        BT_GAP_ADV_FAST_INT_MIN_2,
+        BT_GAP_ADV_FAST_INT_MAX_2,
+        NULL
+    );
+
+    err = bt_le_ext_adv_create(&adv_conn_param, NULL, &adv_conn);
+    if (err) {
+        LOG_ERR("Failed to create connectable adv set (%d)", err);
+        return 0;
+    }
+
+    err = bt_le_ext_adv_set_data(adv_conn, ad, ARRAY_SIZE(ad), NULL, 0);
+    if (err) {
+        LOG_ERR("Failed to set connectable adv data (%d)", err);
+        return 0;
+    }
+
+    err = bt_le_ext_adv_start(adv_conn, BT_LE_EXT_ADV_START_DEFAULT);
+    if (err) {
+        LOG_ERR("Failed to start connectable adv (%d)", err);
+        return 0;
+    }
+
+    LOG_INF("✅ Connectable advertising started");
+
+    char message[] = "HelloBLE";
+
+    struct bt_data data_ad[] = {
+        BT_DATA(BT_DATA_MANUFACTURER_DATA, message, strlen(message)),
+    };
+    // // --- Non-connectable Data Advertising Set (Parallel) ---
+    // struct bt_data data_ad[] = {
+    //     BT_DATA_BYTES(BT_DATA_MANUFACTURER_DATA, 0x01, 0x02, 0x03, 0x04), // Custom payload
+    // };
+
+    struct bt_le_adv_param adv_data_param = BT_LE_ADV_PARAM_INIT(
+        BT_LE_ADV_OPT_USE_NAME,
+        0x00A0, 0x00F0,  // Slower interval
+        NULL
+    );
+
+    err = bt_le_ext_adv_create(&adv_data_param, NULL, &adv_data);
+    if (err) {
+        LOG_ERR("Failed to create data adv set (%d)", err);
+        return 0;
+    }
+
+    err = bt_le_ext_adv_set_data(adv_data, data_ad, ARRAY_SIZE(data_ad), NULL, 0);
+    if (err) {
+        LOG_ERR("Failed to set data adv data (%d)", err);
+        return 0;
+    }
+
+    err = bt_le_ext_adv_start(adv_data, BT_LE_EXT_ADV_START_DEFAULT);
+    if (err) {
+        LOG_ERR("Failed to start data adv (%d)", err);
+        return 0;
+    }
+
+    LOG_INF("✅ Parallel data advertising started");
 
 	while (true) {
 		k_sem_take(&sem_connected, K_FOREVER);
