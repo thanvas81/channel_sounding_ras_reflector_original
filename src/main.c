@@ -45,8 +45,8 @@ static const struct device *bme280_dev;
 static struct bt_conn *connections[MAX_CONN];
 static size_t conn_count;
 
-/* helper: find conn index or –1 */
-static int find_conn_index(struct bt_conn *conn) {
+static int find_conn_index(struct bt_conn *conn) 
+{
     for (int i = 0; i < conn_count; i++) if (connections[i] == conn) return i;
     return -1;
 }
@@ -57,27 +57,22 @@ static void connected_cb(struct bt_conn *conn, uint8_t err)
 	char addr[BT_ADDR_LE_STR_LEN];
 
 	(void)bt_addr_le_to_str(bt_conn_get_dst(conn), addr, sizeof(addr));
-	// LOG_INF("Connected to %s (err 0x%02X)", addr, err);
 	LOG_INF("Connected to %s (err 0x%02X)", addr, err);
 
-	if (err) {
+	if (err) 
+    {
 		bt_conn_unref(conn);
 		return;
 	}
 
-	// connection = bt_conn_ref(conn);
-	// k_sem_give(&sem_connected);
-	if (conn_count >= MAX_CONN) {
+	if (conn_count >= MAX_CONN)
+    {
         LOG_WRN("Max connections (%d) reached, rejecting %s", MAX_CONN, addr);
         bt_conn_disconnect(conn, BT_HCI_ERR_REMOTE_USER_TERM_CONN);
         bt_conn_unref(conn);
         return;
     }
-
-    /* store the new peer */
     connections[conn_count++] = bt_conn_ref(conn);
-
-    // /* immediately configure CS settings for this peer */
     const struct bt_le_cs_set_default_settings_param default_settings = {
         .enable_initiator_role    = false,
         .enable_reflector_role    = true,
@@ -85,17 +80,23 @@ static void connected_cb(struct bt_conn *conn, uint8_t err)
         .max_tx_power             = BT_HCI_OP_LE_CS_MAX_MAX_TX_POWER,
     };
     int err2 = bt_le_cs_set_default_settings(conn, &default_settings);
-    if (err2) {
+    if (err2)
+    {
         LOG_ERR("CS default config failed for %s (err %d)", addr, err2);
-    } else {
+    }
+    else 
+    {
         LOG_INF("CS default config applied for %s", addr);
     }
-    if (conn_count < MAX_CONN) {
-        int adv_err = bt_le_ext_adv_start(adv_conn,
-                                          BT_LE_EXT_ADV_START_DEFAULT);
-        if (adv_err) {
+    if (conn_count < MAX_CONN)
+    {
+        int adv_err = bt_le_ext_adv_start(adv_conn,BT_LE_EXT_ADV_START_DEFAULT);
+        if (adv_err) 
+        {
             LOG_ERR("Failed to restart connectable advertising (%d)", adv_err);
-        } else {
+        }
+        else 
+        {
             LOG_INF("✅ Advertising re‑started for more connections");
         }
     }
@@ -105,51 +106,56 @@ static void disconnected_cb(struct bt_conn *conn, uint8_t reason)
 {
 	LOG_INF("Disconnected (reason 0x%02X)", reason);
 
-    /* remove from connections array */
     int idx = find_conn_index(conn);
-    if (idx >= 0) {
+    if (idx >= 0) 
+    {
         bt_conn_unref(connections[idx]);
-        /* shift down */
-        for (int i = idx; i < conn_count - 1; i++) {
+        for (int i = idx; i < conn_count - 1; i++) 
+        {
             connections[i] = connections[i + 1];
         }
         conn_count--;
     }
 
-    /* Restart connectable advertising if there's room */
-    if (conn_count < MAX_CONN) {
+    if (conn_count < MAX_CONN) 
+    {
         int adv_err = bt_le_ext_adv_start(adv_conn, BT_LE_EXT_ADV_START_DEFAULT);
-        if (adv_err) {
+        if (adv_err) 
+        {
             LOG_ERR("Failed to restart advertising after disconnect (%d)", adv_err);
-        } else {
+        } 
+        else
+        {
             LOG_INF("✅ Advertising restarted after disconnect");
         }
     }
 }
 
-static void remote_capabilities_cb(struct bt_conn *conn,
-				   uint8_t status,
-				   struct bt_conn_le_cs_capabilities *params)
+static void remote_capabilities_cb(struct bt_conn *conn,uint8_t status,struct bt_conn_le_cs_capabilities *params)
 {
 	ARG_UNUSED(conn);
 	ARG_UNUSED(params);
 
-	if (status == BT_HCI_ERR_SUCCESS) {
+	if (status == BT_HCI_ERR_SUCCESS) 
+    {
 		LOG_INF("CS capability exchange completed.");
-	} else {
+	}
+    else 
+    {
 		LOG_WRN("CS capability exchange failed. (HCI status 0x%02x)", status);
 	}
 }
 
-static void config_create_cb(struct bt_conn *conn,
-			      uint8_t status,
-			      struct bt_conn_le_cs_config *config)
+static void config_create_cb(struct bt_conn *conn,uint8_t status,struct bt_conn_le_cs_config *config)
 {
 	ARG_UNUSED(conn);
 
-	if (status == BT_HCI_ERR_SUCCESS) {
+	if (status == BT_HCI_ERR_SUCCESS) 
+    {
 		LOG_INF("CS config creation complete. ID: %d", config->id);
-	} else {
+	}
+    else 
+    {
 		LOG_WRN("CS config creation failed. (HCI status 0x%02x)", status);
 	}
 }
@@ -158,26 +164,33 @@ static void security_enable_cb(struct bt_conn *conn, uint8_t status)
 {
 	ARG_UNUSED(conn);
 
-	if (status == BT_HCI_ERR_SUCCESS) {
+	if (status == BT_HCI_ERR_SUCCESS) 
+    {
 		LOG_INF("CS security enabled.");
-	} else {
+	} 
+    else 
+    {
 		LOG_WRN("CS security enable failed. (HCI status 0x%02x)", status);
 	}
 }
 
-static void procedure_enable_cb(struct bt_conn *conn,
-				uint8_t status,
-				struct bt_conn_le_cs_procedure_enable_complete *params)
+static void procedure_enable_cb(struct bt_conn *conn,uint8_t status,struct bt_conn_le_cs_procedure_enable_complete *params)
 {
 	ARG_UNUSED(conn);
 
-	if (status == BT_HCI_ERR_SUCCESS) {
-		if (params->state == 1) {
+	if (status == BT_HCI_ERR_SUCCESS) 
+    {
+		if (params->state == 1) 
+        {
 			LOG_INF("CS procedures enabled.");
-		} else {
+		} 
+        else 
+        {
 			LOG_INF("CS procedures disabled.");
 		}
-	} else {
+	} 
+    else 
+    {
 		LOG_WRN("CS procedures enable failed. (HCI status 0x%02x)", status);
 	}
 }
@@ -190,8 +203,7 @@ BT_CONN_CB_DEFINE(conn_cb) = {
 	.le_cs_security_enable_complete = security_enable_cb,
 	.le_cs_procedure_enable_complete = procedure_enable_cb,
 };
-static ssize_t read_hello_msg(struct bt_conn *conn, const struct bt_gatt_attr *attr,
-			      void *buf, uint16_t len, uint16_t offset)
+static ssize_t read_hello_msg(struct bt_conn *conn, const struct bt_gatt_attr *attr,void *buf, uint16_t len, uint16_t offset)
 {
 	const char *value = attr->user_data;
 	return bt_gatt_attr_read(conn, attr, buf, len, offset, value, strlen(value));
@@ -206,7 +218,7 @@ BT_GATT_SERVICE_DEFINE(custom_svc,
                        NULL,
                        hello_msg),
 	BT_GATT_CCC(NULL, BT_GATT_PERM_READ | BT_GATT_PERM_WRITE),
-);
+    );
 
 int main(void)
 {
@@ -216,39 +228,39 @@ int main(void)
 
     /* Enable Bluetooth */
     err = bt_enable(NULL);
-    if (err) {
+    if (err) 
+    {
         LOG_ERR("Bluetooth init failed (err %d)", err);
         return 0;
     }
 
     /* Initialize BME280 sensor */
     bme280_dev = DEVICE_DT_GET(BME280_NODE);
-    if (!device_is_ready(bme280_dev)) {
+    if (!device_is_ready(bme280_dev)) 
+    {
         LOG_ERR("❌ BME280 sensor not ready");
         return 0;
     }
     LOG_INF("✅ BME280 sensor initialized");
 
     /* --- Set up CONNECTABLE Extended Advertising --- */
-    struct bt_le_adv_param adv_conn_param = BT_LE_ADV_PARAM_INIT(
-        BT_LE_ADV_OPT_CONNECTABLE,
-        BT_GAP_ADV_FAST_INT_MIN_2,
-        BT_GAP_ADV_FAST_INT_MAX_2,
-        NULL
-    );
+    struct bt_le_adv_param adv_conn_param = BT_LE_ADV_PARAM_INIT(BT_LE_ADV_OPT_CONNECTABLE,BT_GAP_ADV_FAST_INT_MIN_2,BT_GAP_ADV_FAST_INT_MAX_2,NULL);
 
     err = bt_le_ext_adv_create(&adv_conn_param, NULL, &adv_conn);
-    if (err) {
+    if (err) 
+    {
         LOG_ERR("Failed to create connectable adv set (%d)", err);
         return 0;
     }
     err = bt_le_ext_adv_set_data(adv_conn, ad, ARRAY_SIZE(ad), NULL, 0);
-    if (err) {
+    if (err) 
+    {
         LOG_ERR("Failed to set connectable adv data (%d)", err);
         return 0;
     }
     err = bt_le_ext_adv_start(adv_conn, BT_LE_EXT_ADV_START_DEFAULT);
-    if (err) {
+    if (err) 
+    {
         LOG_ERR("Failed to start connectable adv (%d)", err);
         return 0;
     }
@@ -256,55 +268,50 @@ int main(void)
 
     /* --- Set up NON‑CONNECTABLE Data Advertising in parallel --- */
     char message[] = "HelloBLE";
-    struct bt_data data_ad[] = {
-        BT_DATA(BT_DATA_MANUFACTURER_DATA, message, strlen(message)),
-    };
+    struct bt_data data_ad[] = {BT_DATA(BT_DATA_MANUFACTURER_DATA, message, strlen(message)),};
     struct bt_le_adv_param adv_data_param = BT_LE_ADV_PARAM_INIT(
         BT_LE_ADV_OPT_USE_NAME,
         0x00A0, 0x00F0,
         NULL
     );
     err = bt_le_ext_adv_create(&adv_data_param, NULL, &adv_data);
-    if (err) {
+    if (err) 
+    {
         LOG_ERR("Failed to create data adv set (%d)", err);
         return 0;
     }
     err = bt_le_ext_adv_set_data(adv_data, data_ad, ARRAY_SIZE(data_ad), NULL, 0);
-    if (err) {
+    if (err) 
+    {
         LOG_ERR("Failed to set data adv data (%d)", err);
         return 0;
     }
     err = bt_le_ext_adv_start(adv_data, BT_LE_EXT_ADV_START_DEFAULT);
-    if (err) {
+    if (err) 
+    {
         LOG_ERR("Failed to start data adv (%d)", err);
         return 0;
     }
     LOG_INF("✅ Parallel data advertising started");
 
-    while (true) {
-        if (conn_count == 0) {
+    while (true) 
+    {
+        if (conn_count == 0) 
+        {
             k_sleep(K_SECONDS(1));
             continue;
         }
-
-        /* Fetch BME280 data */
         struct sensor_value tv, pv, hv;
-        if (sensor_sample_fetch(bme280_dev) == 0
-            && sensor_channel_get(bme280_dev, SENSOR_CHAN_AMBIENT_TEMP, &tv) == 0
-            && sensor_channel_get(bme280_dev, SENSOR_CHAN_PRESS,     &pv) == 0
-            && sensor_channel_get(bme280_dev, SENSOR_CHAN_HUMIDITY,  &hv) == 0) {
+        if (sensor_sample_fetch(bme280_dev) == 0 && sensor_channel_get(bme280_dev, SENSOR_CHAN_AMBIENT_TEMP, &tv) == 0 && sensor_channel_get(bme280_dev, SENSOR_CHAN_PRESS,     &pv) == 0 && sensor_channel_get(bme280_dev, SENSOR_CHAN_HUMIDITY,  &hv) == 0) 
+        {
 
             float t = sensor_value_to_double(&tv);
             float p = sensor_value_to_double(&pv);
             float h = sensor_value_to_double(&hv);
-
-            snprintf(hello_msg, sizeof(hello_msg),
-                     "D%dTM%dPR%dHM%d",
-                     DEVICE_ID,
-                     (int)(t * 10),
-                     (int)(p * 10),
-                     (int)(h * 10));
-        } else {
+            snprintf(hello_msg, sizeof(hello_msg),"D%dTM%dPR%dHM%d",DEVICE_ID,(int)(t * 10),(int)(p * 10),(int)(h * 10));
+        } 
+        else 
+        {
             strcpy(hello_msg, "TMERR");
             LOG_WRN("⚠️ Failed to read BME280");
         }
@@ -318,7 +325,7 @@ int main(void)
             LOG_INF("🔔 Sent: %s", hello_msg);
         }
 
-        k_sleep(K_SECONDS(2));
+        k_sleep(K_SECONDS(1));
     }
     return 0;
 }
