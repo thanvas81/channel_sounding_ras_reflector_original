@@ -304,7 +304,6 @@ int main(void)
         struct sensor_value tv, pv, hv;
         if (sensor_sample_fetch(bme280_dev) == 0 && sensor_channel_get(bme280_dev, SENSOR_CHAN_AMBIENT_TEMP, &tv) == 0 && sensor_channel_get(bme280_dev, SENSOR_CHAN_PRESS,     &pv) == 0 && sensor_channel_get(bme280_dev, SENSOR_CHAN_HUMIDITY,  &hv) == 0) 
         {
-
             float t = sensor_value_to_double(&tv);
             float p = sensor_value_to_double(&pv);
             float h = sensor_value_to_double(&hv);
