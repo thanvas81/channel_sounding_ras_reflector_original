@@ -11,9 +11,6 @@
 #include <zephyr/bluetooth/gatt.h>
 #include <zephyr/drivers/sensor.h>
 
-
-
-
 #define BT_UUID_CUSTOM_SERVICE_VAL   BT_UUID_128_ENCODE(0x12345678, 0x1234, 0x1234, 0x1234, 0x123456789abc)
 #define BT_UUID_CUSTOM_CHAR_VAL      BT_UUID_128_ENCODE(0xabcdef01, 0x2345, 0x3456, 0x4567, 0x56789abcdef0)
 #define I2C_NODE              		 DT_ALIAS(i2c2)
@@ -51,6 +48,65 @@ static int find_conn_index(struct bt_conn *conn)
     return -1;
 }
 
+static void adv_restart_work_fn(struct k_work *work)
+{
+    bt_le_ext_adv_stop(adv_conn);          /* ignore -EALREADY */
+    k_sleep(K_MSEC(20));
+    int err = bt_le_ext_adv_start(adv_conn, BT_LE_EXT_ADV_START_DEFAULT);
+    if (err) { LOG_ERR("Re-start adv failed (%d)", err); }
+}
+
+K_WORK_DEFINE(adv_restart_work, adv_restart_work_fn);
+
+// static void connected_cb(struct bt_conn *conn, uint8_t err)
+// {
+// 	char addr[BT_ADDR_LE_STR_LEN];
+
+// 	(void)bt_addr_le_to_str(bt_conn_get_dst(conn), addr, sizeof(addr));
+// 	LOG_INF("Connected to %s (err 0x%02X)", addr, err);
+
+// 	if (err) 
+//     {
+// 		bt_conn_unref(conn);
+// 		return;
+// 	}
+
+// 	if (conn_count >= MAX_CONN)
+//     {
+//         LOG_WRN("Max connections (%d) reached, rejecting %s", MAX_CONN, addr);
+//         bt_conn_disconnect(conn, BT_HCI_ERR_REMOTE_USER_TERM_CONN);
+//         bt_conn_unref(conn);
+//         return;
+//     }
+//     connections[conn_count++] = bt_conn_ref(conn);
+//     const struct bt_le_cs_set_default_settings_param default_settings = {
+//         .enable_initiator_role    = false,
+//         .enable_reflector_role    = true,
+//         .cs_sync_antenna_selection = BT_LE_CS_ANTENNA_SELECTION_OPT_REPETITIVE,
+//         .max_tx_power             = BT_HCI_OP_LE_CS_MAX_MAX_TX_POWER,
+//     };
+//     int err2 = bt_le_cs_set_default_settings(conn, &default_settings);
+//     if (err2)
+//     {
+//         LOG_ERR("CS default config failed for %s (err %d)", addr, err2);
+//     }
+//     else 
+//     {
+//         LOG_INF("CS default config applied for %s", addr);
+//     }
+//     if (conn_count < MAX_CONN)
+//     {
+//         int adv_err = bt_le_ext_adv_start(adv_conn,BT_LE_EXT_ADV_START_DEFAULT);
+//         if (adv_err) 
+//         {
+//             LOG_ERR("Failed to restart connectable advertising (%d)", adv_err);
+//         }
+//         else 
+//         {
+//             LOG_INF("✅ Advertising re‑started for more connections");
+//         }
+//     }
+// }
 
 static void connected_cb(struct bt_conn *conn, uint8_t err)
 {
@@ -59,47 +115,74 @@ static void connected_cb(struct bt_conn *conn, uint8_t err)
 	(void)bt_addr_le_to_str(bt_conn_get_dst(conn), addr, sizeof(addr));
 	LOG_INF("Connected to %s (err 0x%02X)", addr, err);
 
-	if (err) 
-    {
+	if (err) {
+		/* Connection attempt failed */
 		bt_conn_unref(conn);
 		return;
 	}
 
-	if (conn_count >= MAX_CONN)
-    {
-        LOG_WRN("Max connections (%d) reached, rejecting %s", MAX_CONN, addr);
-        bt_conn_disconnect(conn, BT_HCI_ERR_REMOTE_USER_TERM_CONN);
-        bt_conn_unref(conn);
-        return;
-    }
-    connections[conn_count++] = bt_conn_ref(conn);
-    const struct bt_le_cs_set_default_settings_param default_settings = {
-        .enable_initiator_role    = false,
-        .enable_reflector_role    = true,
-        .cs_sync_antenna_selection = BT_LE_CS_ANTENNA_SELECTION_OPT_REPETITIVE,
-        .max_tx_power             = BT_HCI_OP_LE_CS_MAX_MAX_TX_POWER,
-    };
-    int err2 = bt_le_cs_set_default_settings(conn, &default_settings);
-    if (err2)
-    {
-        LOG_ERR("CS default config failed for %s (err %d)", addr, err2);
-    }
-    else 
-    {
-        LOG_INF("CS default config applied for %s", addr);
-    }
-    if (conn_count < MAX_CONN)
-    {
-        int adv_err = bt_le_ext_adv_start(adv_conn,BT_LE_EXT_ADV_START_DEFAULT);
-        if (adv_err) 
-        {
-            LOG_ERR("Failed to restart connectable advertising (%d)", adv_err);
-        }
-        else 
-        {
-            LOG_INF("✅ Advertising re‑started for more connections");
-        }
-    }
+	/* Enforce max connections */
+	if (conn_count >= MAX_CONN) {
+		LOG_WRN("Max connections (%d) reached, rejecting %s", MAX_CONN, addr);
+		bt_conn_disconnect(conn, BT_HCI_ERR_REMOTE_USER_TERM_CONN);
+		bt_conn_unref(conn);
+		return;
+	}
+
+	/* Track this connection */
+	connections[conn_count++] = bt_conn_ref(conn);
+
+	/* Apply CS default settings for this link (reflector role) */
+	const struct bt_le_cs_set_default_settings_param default_settings = {
+		.enable_initiator_role      = false,
+		.enable_reflector_role      = true,
+		.cs_sync_antenna_selection  = BT_LE_CS_ANTENNA_SELECTION_OPT_REPETITIVE,
+		.max_tx_power               = BT_HCI_OP_LE_CS_MAX_MAX_TX_POWER,
+	};
+	int err2 = bt_le_cs_set_default_settings(conn, &default_settings);
+	if (err2) {
+		LOG_ERR("CS default config failed for %s (err %d)", addr, err2);
+	} else {
+		LOG_INF("CS default config applied for %s", addr);
+	}
+
+	/* Pause the non-connectable advertising set while we accept more links */
+	if (adv_data) {
+		int s = bt_le_ext_adv_stop(adv_data);
+		if (s && s != -EALREADY) {
+			LOG_WRN("Stopping data adv failed (%d)", s);
+		}
+	}
+
+	/* Re-arm connectable advertising deterministically via work item */
+	if (conn_count < MAX_CONN) {
+		k_work_submit(&adv_restart_work);
+	}
+}
+
+static void security_changed_cb(struct bt_conn *conn, bt_security_t level,
+                                enum bt_security_err sec_err)
+{
+	char addr[BT_ADDR_LE_STR_LEN];
+	(void)bt_addr_le_to_str(bt_conn_get_dst(conn), addr, sizeof(addr));
+
+	if (sec_err) {
+		LOG_WRN("Security change on %s failed (level %d, err %d)",
+		        addr, level, sec_err);
+		return;
+	}
+
+	LOG_INF("Security changed on %s: level %d OK", addr, level);
+
+	/* When the link is encrypted (L2+), resume the non-connectable adv set */
+	if (level >= BT_SECURITY_L2 && adv_data) {
+		int err = bt_le_ext_adv_start(adv_data, BT_LE_EXT_ADV_START_DEFAULT);
+		if (err && err != -EALREADY) {
+			LOG_WRN("Resuming data adv failed (%d)", err);
+		} else {
+			LOG_INF("✅ Data advertising resumed");
+		}
+	}
 }
 
 static void disconnected_cb(struct bt_conn *conn, uint8_t reason)
@@ -198,6 +281,7 @@ static void procedure_enable_cb(struct bt_conn *conn,uint8_t status,struct bt_co
 BT_CONN_CB_DEFINE(conn_cb) = {
 	.connected = connected_cb,
 	.disconnected = disconnected_cb,
+    .security_changed = security_changed_cb,
 	.le_cs_read_remote_capabilities_complete = remote_capabilities_cb,
 	.le_cs_config_complete = config_create_cb,
 	.le_cs_security_enable_complete = security_enable_cb,
