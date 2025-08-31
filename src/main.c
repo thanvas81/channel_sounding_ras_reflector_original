@@ -58,56 +58,6 @@ static void adv_restart_work_fn(struct k_work *work)
 
 K_WORK_DEFINE(adv_restart_work, adv_restart_work_fn);
 
-// static void connected_cb(struct bt_conn *conn, uint8_t err)
-// {
-// 	char addr[BT_ADDR_LE_STR_LEN];
-
-// 	(void)bt_addr_le_to_str(bt_conn_get_dst(conn), addr, sizeof(addr));
-// 	LOG_INF("Connected to %s (err 0x%02X)", addr, err);
-
-// 	if (err) 
-//     {
-// 		bt_conn_unref(conn);
-// 		return;
-// 	}
-
-// 	if (conn_count >= MAX_CONN)
-//     {
-//         LOG_WRN("Max connections (%d) reached, rejecting %s", MAX_CONN, addr);
-//         bt_conn_disconnect(conn, BT_HCI_ERR_REMOTE_USER_TERM_CONN);
-//         bt_conn_unref(conn);
-//         return;
-//     }
-//     connections[conn_count++] = bt_conn_ref(conn);
-//     const struct bt_le_cs_set_default_settings_param default_settings = {
-//         .enable_initiator_role    = false,
-//         .enable_reflector_role    = true,
-//         .cs_sync_antenna_selection = BT_LE_CS_ANTENNA_SELECTION_OPT_REPETITIVE,
-//         .max_tx_power             = BT_HCI_OP_LE_CS_MAX_MAX_TX_POWER,
-//     };
-//     int err2 = bt_le_cs_set_default_settings(conn, &default_settings);
-//     if (err2)
-//     {
-//         LOG_ERR("CS default config failed for %s (err %d)", addr, err2);
-//     }
-//     else 
-//     {
-//         LOG_INF("CS default config applied for %s", addr);
-//     }
-//     if (conn_count < MAX_CONN)
-//     {
-//         int adv_err = bt_le_ext_adv_start(adv_conn,BT_LE_EXT_ADV_START_DEFAULT);
-//         if (adv_err) 
-//         {
-//             LOG_ERR("Failed to restart connectable advertising (%d)", adv_err);
-//         }
-//         else 
-//         {
-//             LOG_INF("✅ Advertising re‑started for more connections");
-//         }
-//     }
-// }
-
 static void connected_cb(struct bt_conn *conn, uint8_t err)
 {
 	char addr[BT_ADDR_LE_STR_LEN];
