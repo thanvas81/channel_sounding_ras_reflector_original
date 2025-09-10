@@ -1,0 +1,51 @@
+%%{init: {"theme": "default", "themeVariables": { "background": "white"}}}%%
+flowchart TD
+    %% ===== Setup chain (top to bottom) =====
+    subgraph S1["Setup"]
+    direction TB
+        A["Start"] --> B["Enable Bluetooth"]
+        B --> C["Init BME280 + Accelerometer"]
+        C --> D["Create connectable advertising (adv_conn)"]
+        D --> E["Create non-connectable data advertising (adv_data)"]
+        E --> F["Start both advertising sets"]
+    end
+
+    %% ===== Branch 1: Connectionless GATT / Data Advertising =====
+    subgraph S2["Connectionless GATT / Data Advertising"]
+    direction TB
+        G1["Periodic loop (every 1 s)"]
+        G1 --> H1["Read BME280 values<br/>(temp, pressure, humidity)"]
+        H1 --> H2["Read battery voltage (ADC)"]
+        H2 --> I1["Format payload<br/>(D<ID> TMx PRx HMx BTx)"]
+        I1 --> J1["Update adv_data payload"]
+        J1 --> G1
+    end
+
+    %% ===== Branch 2: Channel Sounding (Reflector) =====
+    subgraph S3["Channel Sounding (Reflector)"]
+    direction TB
+        G2["On connect → track device (limit MAX_CONN)"]
+        G2 --> H2R["Apply CS defaults (reflector role)"]
+        H2R --> I2["Stop data advertising during link setup"]
+        I2 --> J2["On security OK → resume data advertising"]
+        J2 --> K2["Report CS status:<br/>capabilities → config → security → procedures"]
+        K2 --> L2["On disconnect → restart connectable advertising"]
+    end
+
+    %% ===== Branch 3: Power Management (Sleep/Wake) =====
+    subgraph S4["Power Management"]
+    direction TB
+        P1["Watchdog timer started"]
+        P1 --> P2{"Motion detected<br/>by accelerometer?"}
+        P2 -- "yes" --> P3["Reset watchdog<br/>(stay awake)"]
+        P2 -- "no for 10 s" --> P4["Enter sleep mode"]
+        P4 --> P5["Accelerometer interrupt<br/>(motion event)"]
+        P5 --> P6["Wake up + resume tasks"]
+        P3 --> P2
+        P6 --> P2
+    end
+
+    %% ===== Flow links from setup to branches =====
+    F --> S2
+    F --> S3
+    F --> S4
