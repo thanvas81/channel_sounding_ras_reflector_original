@@ -10,11 +10,15 @@
 #include <zephyr/bluetooth/hci.h>
 #include <zephyr/bluetooth/gatt.h>
 #include <zephyr/drivers/sensor.h>
+#include <zephyr/drivers/adc.h>
 
 #define BT_UUID_CUSTOM_SERVICE_VAL   BT_UUID_128_ENCODE(0x12345678, 0x1234, 0x1234, 0x1234, 0x123456789abc)
 #define BT_UUID_CUSTOM_CHAR_VAL      BT_UUID_128_ENCODE(0xabcdef01, 0x2345, 0x3456, 0x4567, 0x56789abcdef0)
 #define I2C_NODE              		 DT_ALIAS(i2c2)
 #define BME280_NODE 				 DT_INST(0, bosch_bme280)
+#define ADC_NODE       DT_NODELABEL(adc)
+#define ADC_CH_ID      0                /* we used CH0 in the UI */
+#define ADC_RES        12
 #define DEVICE_ID      				 1
 #define MAX_CONN 					 4
 
@@ -27,11 +31,15 @@ LOG_MODULE_REGISTER(app_main, LOG_LEVEL_INF);
 
 static struct bt_le_ext_adv *adv_conn;
 static struct bt_le_ext_adv *adv_data;
+static const struct device *adc_dev;
+static const struct adc_dt_spec vbat_adc =
+    ADC_DT_SPEC_GET_BY_IDX(DT_PATH(zephyr_user), 0);
+
 static K_SEM_DEFINE(sem_connected, 0, 1);
 
 
 static const struct bt_data ad[] = {
-	BT_DATA_BYTES(BT_DATA_FLAGS, (BT_LE_AD_GENERAL | BT_LE_AD_NO_BREDR)),
+    BT_DATA_BYTES(BT_DATA_FLAGS, (BT_LE_AD_GENERAL | BT_LE_AD_NO_BREDR)),
 	BT_DATA_BYTES(BT_DATA_UUID16_ALL, BT_UUID_16_ENCODE(BT_UUID_RANGING_SERVICE_VAL)),
 	BT_DATA(BT_DATA_NAME_COMPLETE, CONFIG_BT_DEVICE_NAME, sizeof(CONFIG_BT_DEVICE_NAME) - 1),
 };
@@ -41,6 +49,7 @@ static const struct device *bme280_dev;
 
 static struct bt_conn *connections[MAX_CONN];
 static size_t conn_count;
+
 
 static int find_conn_index(struct bt_conn *conn) 
 {
@@ -55,6 +64,40 @@ static void adv_restart_work_fn(struct k_work *work)
     int err = bt_le_ext_adv_start(adv_conn, BT_LE_EXT_ADV_START_DEFAULT);
     if (err) { LOG_ERR("Re-start adv failed (%d)", err); }
 }
+
+static int adc_init_channel(void)
+{
+    if (!device_is_ready(vbat_adc.dev)) {
+        LOG_ERR("ADC device not ready");
+        return -ENODEV;
+    }
+    /* This applies gain, reference, acquisition-time, input pin from DT */
+    return adc_channel_setup_dt(&vbat_adc);
+}
+
+static int read_vbat_mv(int32_t *out_mv)
+{
+    int16_t raw;
+    struct adc_sequence seq = {
+        .channels    = BIT(vbat_adc.channel_id),
+        .buffer      = &raw,
+        .buffer_size = sizeof(raw),
+        .resolution  = ADC_RES,   /* 12, as you defined */
+    };
+
+    int err = adc_read(vbat_adc.dev, &seq);
+    if (err) return err;
+
+    int32_t pin_mv = raw;
+    err = adc_raw_to_millivolts(adc_ref_internal(vbat_adc.dev),
+                                vbat_adc.channel_cfg.gain,
+                                ADC_RES, &pin_mv);
+    if (err) return err;
+
+    *out_mv = pin_mv * 2;  /* undo your 100k/100k divider */
+    return 0;
+}
+
 
 K_WORK_DEFINE(adv_restart_work, adv_restart_work_fn);
 
@@ -268,6 +311,12 @@ int main(void)
         return 0;
     }
 
+     err = adc_init_channel();
+    if (err) {
+        LOG_ERR("ADC init failed (%d)", err);
+        return 0;
+    }
+
     /* Initialize BME280 sensor */
     bme280_dev = DEVICE_DT_GET(BME280_NODE);
     if (!device_is_ready(bme280_dev)) 
@@ -336,12 +385,22 @@ int main(void)
             continue;
         }
         struct sensor_value tv, pv, hv;
+        /* --- Read VBAT (mV) --- */
+        int32_t vbat_mv = -1;
+        int v_err = read_vbat_mv(&vbat_mv);
+        // if (v_err == 0) {
+        //     LOG_INF("🔋 Battery voltage = %d mV", vbat_mv);
+        // } else {
+        //     LOG_WRN("VBAT read failed (%d)", v_err);
+        // }
+
         if (sensor_sample_fetch(bme280_dev) == 0 && sensor_channel_get(bme280_dev, SENSOR_CHAN_AMBIENT_TEMP, &tv) == 0 && sensor_channel_get(bme280_dev, SENSOR_CHAN_PRESS,     &pv) == 0 && sensor_channel_get(bme280_dev, SENSOR_CHAN_HUMIDITY,  &hv) == 0) 
         {
             float t = sensor_value_to_double(&tv);
             float p = sensor_value_to_double(&pv);
             float h = sensor_value_to_double(&hv);
-            snprintf(hello_msg, sizeof(hello_msg),"D%dTM%dPR%dHM%d",DEVICE_ID,(int)(t * 10),(int)(p * 10),(int)(h * 10));
+            int bat = vbat_mv /10;
+            snprintf(hello_msg, sizeof(hello_msg),"D%dTM%dPR%dHM%dBT%d",DEVICE_ID,(int)(t * 10),(int)(p * 10),(int)(h * 10),bat);
         } 
         else 
         {
